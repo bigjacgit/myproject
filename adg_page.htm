@@ -1,0 +1,960 @@
+<html>
+<head> <title> Projects of Sravan </title>
+<link rel="stylesheet" type="text/css" href="file:///C:/Jacob/TARGETS/WebC1/cssformat.css">
+ </head>
+
+
+<body width=500>
+
+<table border=1 width=500 cellpadding=0   class="gradienttable">
+
+<tr><td>
+<a name="dgadg"><b> DaTguard/ADG  </b></a><br>
+<a href="#00">Top</a>
+<pre>
+DATAGUARD is a solution for High Availble, Data Protection and Disaster Recovery.
+
+Dataguard maintains - STANDBY DATABASE as copies of the Production database.
+Dataguard is used for failover (unplanned outage) and switch over (planned outage)
+
+1.Physcial standby Database:
+  - provides identical copy of PRIMARY DATABASE.
+  - Data transport based on block-for-block.
+  - databsae schema including schema, indexes are same. So ROWIDs will be same.
+  - This is good solution for FAILOVER and SWITCHOVER
+
+  - 11gR1 enhanced an abilty to open 'physical standby' for read-only access
+    while redo applies.
+
+2.Logical standby Database :
+  - this is not identical copy of PRIMARY DATABASE.
+  - Data transport uses LOGMINOR for replication. Application is SQL statements.
+  - This is good solution for reporting putpose at any time.
+
+3.Snapshot Standby Database:
+  - Physical Standby Database can be changed to 'Snapshot Standby Database'
+  - The process of receiving Redo data will be continued by 'standby', but
+        they will not apply as long as the standby is as 'Snapshot Standby Database'
+  - The stanby database can be READABLE and UPDATABLE when it is 'Snapshot Standby Database'.
+  - After convert 'Snapshot Standby Database' into back to the position,
+         then redo data will be started applying.
+         And it discards the transactions that are updated or inserted locally on database.
+  - This is good solution for taking PRODUCTION BACKUP for data refresh purpose,
+                          for building new database like PRODUCTION.
+
+
+
+
+</pre>
+</td></tr>
+
+
+
+
+<tr><td>
+<a name="quickcmd"><b> Dataguard Quick Commands  </b></a><br>
+<a href="#00">Top</a>
+<pre>
+<img src=jpg/adg_cmd.jpg> </img>
+</pre>
+</td></tr>
+
+
+
+
+<tr><td>
+<a name="dg2adg"><b> DG convert to ADG  </b></a><br>
+<a href="#00">Top</a>
+<pre>
+<img src="jpg/conv_dg_2_adg.jpg"></img>
+</pre>
+</td></tr>
+
+
+<tr><td>
+<a name="redoapply"><b> Real-Time Redo Apply  </b></a><br>
+<a href="#00">Top</a>
+<pre>
+<img src="jpg/redo_apply_services.jpg"></img>
+</pre>
+</td></tr>
+
+
+<tr><td>
+<a name="autogap"><b> Auto GAP resolution  </b></a><br>
+<a href="#00">Top</a>
+<pre>
+<img src="jpg/auto_gap_solution.jpg"></img>
+</pre>
+</td></tr>
+
+
+<tr><td>
+<a name="dgsetup"><b> Dataguard Setup </b></a><br>
+<a href="#00">Top</a>
+<pre><i>
+Some points:
+1. An Active Data Guard (real-time query) standby database is an exact copy of the primary that
+   is open READONLY while it continuously applies changes transmitted from primary database.
+
+2. The Active Data Guard can offload ad-hoc queries, reporting, and fast incremental backups
+   from the primary database, improving performance and scalability while preventing data loss
+   or downtime due to data corruptions, database and site failures, or natural disaster.
+
+3. In 11g, Oracle has simplified the building of standby without taking adhoc backup against primary
+   database. The method is called 'active database'. This is additional option especially for small
+   databases.
+
+<HR>
+
+<b><u>2ND EXAMPLE: Environment Setup</u></b>
+<b>1a.Primary: 2-node 11.2.0.1 RAC PRD2</b>
+<b>1b.hostname</b>: t01oracleprd901.xyz.gmindia.com, t01oracleprd902.xyz.gmindia.com
+<b>1c.db_name</b>: prd2
+<b>1d.db_unique_name</b>: prd2
+
+<b>2a.Data Guard/Standby: single node 11.2.0.1</b>
+<b>2b.hostname</b>: t01oracleprd903.xyz.gmindia.com
+<b>2c.db_name</b>: prd2
+<b>2d.db_unique_name</b>: prd2adg
+
+<HR>
+<B>1.Enable force logging</b>
+1. Before building out your standby, ensure that the primary database has force logging enabled.
+   if not force.
+
+    Primary DB Site: Enable Force logging
+    SQL> alter database force logging;
+
+<hr>
+<B>2.[OPTIONAL] Set enviornment variable to the folder.</b>
+2. Ensure TNS_ADMIN is pointing to the proper network admin location. Tip: we can setup a common
+   location for all databases and different release levels.This is an option. If someone does not
+   like to use this, the instances would use it's own set of TNS files in it's network admin directory.
+   Generally it is '$ORACLE_HOME/network/admin'
+
+   echo $ORACLE_HOME  -----    /opt/oracle/database/11.2.0.2
+   echo $TNS_ADMIN    -----    /opt/oracle/database/11.2.0.2/network/admin
+
+   how to setup for windows: set TNS_ADMIN=%ORACLE_HOME%\network\admin
+   how to setup for linux  : export TNS_ADMIN=$ORACLE_HOME/network/admin
+
+<hr>
+<B>3.Make necessary entries to LISTENER.ORA and TNSNAMES.ORA. <br>
+
+- Make entry in LISTNER.ORA of PRIMARY DB -- set SID='stbydb'
+
+    vi listener.ora
+    =================
+    SID_LIST_LISTENER_STBYDB =
+
+	  (SID_LIST =
+	    (SID_DESC =
+	      (SID_NAME = PLSExtProc)
+	      (ORACLE_HOME = /orabase/product/11.2.0/db_1)
+	      (PROGRAM = extproc)
+	    )
+	    (SID_DESC =
+	      (GLOBAL_DBNAME = stbydb)
+	      (SID_NAME = stbydb)
+	      (ORACLE_HOME = /orabase/product/11.2.0/db_1)
+	    )
+	  )
+    lsnrctl reload LISTENER_STBYDB
+
+- Make tns entry in TNSNAMES.ORA on PRIMARY and STANDBY
+
+ (example)
+
+  stbydb =
+  (DESCRIPTION =
+    (ADDRESS_LIST =
+      (ADDRESS = (PROTOCOL = TCP)(HOST = server1)(PORT = 1525))
+    )
+    (CONNECT_DATA =
+      (SERVICE_NAME = stbydb)
+    )
+  )
+
+  prmrydb =
+  (DESCRIPTION =
+    (ADDRESS = (PROTOCOL = TCP)(HOST = scan_prd.server2.com)(PORT = 1521))
+    (CONNECT_DATA =
+      (SERVER = DEDICATED)
+      (SERVICE_NAME = prmrydb)
+    )
+  )
+
+ 3c, Test connectivity both ways between both db instances via tnsping.
+
+     tnsping stbydb
+     tnsping prmrydb
+
+<HR>
+<B>4.Check THE FOLDERS should be same ..on source and target.</b>
+
+     mkdir -p $ORACLE_BASE/admin/stbydb/adump
+     mkdir -p $ORACLE_BASE/admin/stbydb/pfile
+     mkdir -p $ORACLE_BASE/admin/stbydb/create
+
+<HR>
+<B>5.Crete PASSWORD file and moved the specific folder where DG is installing</b>
+
+- Create password file and copy to standby
+  $ORACLE_HOME/bin/orapwd     file=$ORACLE_HOME/dbs/pwd_SID.ora      password=oracle      entries=5
+
+- SCP to standby site
+  scp $ORACLE_HOME/dbs/pwd_SID.ora  --> to STANDBY DB SITE
+
+<HR>
+<B>6.Create PARAMETER file for standby. Ensure there should be entry 'db_name'  </b>
+
+    echo "db_name=stbydb"  > $ORACLE_HOME/dbs/init_stbydb.ora
+
+<HR>
+
+<b>7. Enable ARCHIVE LOG mode</b>
+SQL> archive log list;
+
+<HR>
+<b>8. Check files -- datafile, temp files, redo logs </b>
+
+SQL> select file#, name from v$datafile order by 1;
+
+     FILE# NAME
+---------- ------------------------------------------------------------
+         1 +DATA1/prd2/datafile/system.256.741768115
+         2 +DATA1/prd2/datafile/sysaux.257.741768115
+         3 +DATA1/prd2/datafile/undotbs1.258.741768115
+         4 +DATA1/prd2/datafile/users.259.741768117
+         5 +DATA1/prd2/datafile/undotbs2.264.741768237
+         6 +DATA1/prd2/datafile/teamworks_data.269.741923041
+         7 +DATA1/prd2/datafile/indxdynm.270.741923047
+         8 +DATA1/prd2/datafile/teamworks_lob1.271.741923209
+         9 +DATA1/prd2/datafile/datadynm.272.741923225
+        10 +DATA1/prd2/datafile/teamworks_lob.273.741923235
+        11 +DATA1/prd2/datafile/audit_data.274.741983181
+        12 +DATA1/prd2/datafile/datadynm.275.741983929
+        13 +DATA1/prd2/datafile/audit_index.276.741984295
+        14 +DATA1/prd2/datafile/teamworks_index.277.741985125
+        15 +DATA1/prd2/datafile/audit_data_lt_q4_2010.278.741986113
+        16 +DATA1/prd2/datafile/audit_data_maxval.279.741986135
+        17 +DATA1/prd2/datafile/audit_data_q1_2011.280.741986159
+        18 +DATA1/prd2/datafile/audit_data_q4_2010.281.741986179
+        19 +DATA1/prd2/datafile/audit_index_lt_q4_2010.282.741986203
+        20 +DATA1/prd2/datafile/audit_index_maxval.283.741986231
+        21 +DATA1/prd2/datafile/audit_index_q1_2011.284.741986251
+        22 +DATA1/prd2/datafile/audit_index_q4_2010.285.741986265
+        23 +DATA1/prd2/datafile/ggate.286.743797729
+        24 +DATA1/prd2/datafile/datadynm.287.745428401
+        25 +DATA1/prd2/datafile/deallogo_datadynm.289.747328651
+        26 +DATA1/prd2/datafile/deallogo_indxdynm.288.747328601
+        27 +DATA1/prd2/datafile/deallogo_lobdynm.290.747328775
+        28 +DATA1/prd2/datafile/priceblast_datadynm_01.dbf
+        29 +DATA1/prd2/datafile/indxdynm.266.747947415
+        30 +DATA1/prd2/datafile/indxdynm01.dbf
+        31 +DATA1/prd2/datafile/lsw_task_data01.dbf
+        32 +INDEX1/prd2/datafile/lsw_task_index01.dbf
+        33 +INDEX1/prd2/datafile/lsw_task_blob01.dbf
+        34 +DATA2/prd2/oradata/tw_data01.dbf
+
+34 rows selected.
+
+SQL> select name from v$tempfile;
+
+NAME
+--------------------------------------------------------------------------------
++DATA1/prd2/tempfile/temp.263.741768227
+
+SQL> select group#, member from v$logfile;
+
+    GROUP# MEMBER
+---------- --------------------------------------------------
+        11 +REDODG/prd2/onlinelog/group_11.264.757795819
+        12 +REDODG/prd2/onlinelog/group_12.265.757795853
+        13 +REDODG/prd2/onlinelog/group_13.271.757796287
+        14 +REDODG/prd2/onlinelog/group_14.268.757796095
+
+        21 +REDODG/prd2/onlinelog/group_21.266.757795925
+        22 +REDODG/prd2/onlinelog/group_22.270.757796233
+        23 +REDODG/prd2/onlinelog/group_23.269.757796135
+        24 +REDODG/prd2/onlinelog/group_24.267.757795951
+
+8 rows selected.
+
+SQL>
+
+4.	Modify standby initial parameters
+
+-- parameter: standby_file_management=AUTO
+   WHY? when you rename any data file on primary database, this will not propogate on standby
+        database automatically. 'AUTO' option gave the abilty.
+
+SQL> alter system set standby_file_management='AUTO' scope=both sid='*';
+
+-- parameter: log_archive_config='dg_config=(prd2,prd2adg)'
+   WHY? This parameter enables/disables the sening of redo logs to remote destinations.
+        This parameter needs the specification of 'the service'.
+
+        Default values: SEND, RECEIVE.
+        'dg_config' - allows to provide upto 9 services -
+
+SQL> alter system set log_archive_config='dg_config=(prd2,prd2adg)' scope=both sid='*';
+
+-- parameter: log_archive_dest_state_2='defer'   |  'service=prd2adg lgwr async
+   WHY? 'defer' does not allow to propogate the changes to the specified destination.
+
+
+SQL> alter system set log_archive_dest_state_2='defer' scope=both sid='*';
+or
+
+SQL> alter system set log_archive_dest_2= 'service=prd2adg lgwr async
+     valid_for=(online_logfiles,primary_role) db_unique_name=prd2adg' scope=both sid='*';
+
+    -- check 'service', 'lgwr','async','online_log', primary_role
+
+SQL> alter system set fal_client='prd2' scope=both sid='*';
+
+SQL> alter system set fal_server='prd2adg' scope=both sid='*';
+
+OR
+
+SQL> show parameter standby
+NAME                                 TYPE        VALUE
+------------------------------------ ----------- ------------------------------
+standby_archive_dest                 string      ?/dbs/arch
+standby_file_management              string      AUTO
+
+SQL> show parameter log_archive_config
+NAME                                 TYPE        VALUE
+------------------------------------ ----------- ------------------------------
+log_archive_config                   string      dg_config=(DEV701D1,DEV701D1adg)
+SQL> show parameter db_un
+NAME                                 TYPE        VALUE
+------------------------------------ ----------- ------------------------------
+db_unique_name                       string      DEV701D1
+db_unrecoverable_scn_tracking        boolean     TRUE
+
+SQL> alter system set log_archive_config='dg_config=(DEV701D1,DEV701D1ADG)' scope=both;
+System altered.
+
+SQL> show parameter log_archive_config
+NAME                                 TYPE        VALUE
+------------------------------------ ----------- ------------------------------
+log_archive_config                   string      dg_config=(DEV701D1,DEV701D1ADG)
+
+SQL> show parameter log_archive_dest_state_2
+NAME                                 TYPE        VALUE
+------------------------------------ ----------- ------------------------------
+log_archive_dest_state_2             string      defer
+log_archive_dest_state_20            string      enable
+log_archive_dest_state_21            string      enable
+log_archive_dest_state_22            string      enable
+log_archive_dest_state_23            string      enable
+log_archive_dest_state_24            string      enable
+log_archive_dest_state_25            string      enable
+log_archive_dest_state_26            string      enable
+log_archive_dest_state_27            string      enable
+log_archive_dest_state_28            string      enable
+log_archive_dest_state_29            string      enable
+
+SQL> show parameter log_archive_dest_2
+NAME                                 TYPE        VALUE
+------------------------------------ ----------- ------------------------------
+log_archive_dest_2                   string      service=DEV701D1adg lgwr async
+                                                  valid_for=(online_logfiles,pr
+                                                 imary_role) db_unique_name=DEV
+                                                 701D1adg
+log_archive_dest_20                  string
+log_archive_dest_21                  string
+log_archive_dest_22                  string
+log_archive_dest_23                  string
+log_archive_dest_24                  string
+log_archive_dest_25                  string
+log_archive_dest_26                  string
+log_archive_dest_27                  string
+log_archive_dest_28                  string
+log_archive_dest_29                  string
+
+SQL> alter system set log_archive_dest_2='service=DEV701D1ADG lgwr async valid_for=(online_logfiles,primary_role)
+     db_unique_name=DEV701D1ADG' scope=both;
+System altered.
+
+SQL> show parameter log_archive_dest_2
+NAME                                 TYPE        VALUE
+------------------------------------ ----------- ------------------------------
+log_archive_dest_2                   string      service=DEV701D1ADG lgwr async
+                                                  valid_for=(online_logfiles,pr
+                                                 imary_role) db_unique_name=DEV
+                                                 701D1ADG
+log_archive_dest_20                  string
+log_archive_dest_21                  string
+log_archive_dest_22                  string
+log_archive_dest_23                  string
+log_archive_dest_24                  string
+log_archive_dest_25                  string
+log_archive_dest_26                  string
+log_archive_dest_27                  string
+log_archive_dest_28                  string
+log_archive_dest_29                  string
+
+SQL> show parameter fal_
+NAME                                 TYPE        VALUE
+------------------------------------ ----------- ------------------------------
+fal_client                           string      DEV701D1
+fal_server                           string      DEV701D1adg
+
+SQL> alter system set fal_server='DEV701D1ADG' scope=both ;
+System altered.
+
+<hr>
+5.	Generate pfile
+SQL> create pfile='/opt/oracle/initprd2.ora' from spfile;
+
+Notes that: do NOT generate pfile as $ORACLE_HOME/dbs/init<sid>.ora that will overwrite the
+default pfile.
+
+5b.	Generate password file
+orapwd file=orapwprd21 password=test123 entries=10 force=y
+
+
+6.	Modify tnsnames.ora on ALL nodes to have both primary and data guard entries
+-bash-3.2$ more tnsnames.ora
+
+PRD2 =
+  (DESCRIPTION=
+    (ADDRESS=(PROTOCOL=TCP)(HOST=t01prd2scan.xyz.gmindia.com)(PORT=1521))
+    (CONNECT_DATA=
+      (SERVER=DEDICATED)
+      (SERVICE_NAME=prd2)
+    )
+  )
+
+prd2adg =
+  (DESCRIPTION=
+    (ADDRESS=(PROTOCOL=TCP)(HOST=t01oracleprd903.xyz.gmindia.com)(PORT=1521))
+    (CONNECT_DATA=
+      (SERVER=DEDICATED)
+      (SERVICE_NAME=prd2adg)
+    )
+  )
+
+-bash-3.2$
+
+7.	Copy files to data guard site
+-bash-3.2$ scp -p initprd2.ora oracle@t01oracleprd903.xyz.gmindia.com:/opt/oracle/app/db/11.2.0.1/dbs/initprd2adg.orig
+-bash-3.2$ scp -p orapwprd21 oracle@t01oracleprd903.xyz.gmindia.com:/opt/oracle/app/db/11.2.0.1/dbs/orapwprd2adg
+-bash-3.2$ scp -p tnsnames.ora oracle@t01oracleprd903.xyz.gmindia.com:/opt/oracle/app/db/11.2.0.1/network/admin/
+
+8.	Backup database including controlfile and archived logs in RMAN
+run {
+allocate channel c1 type disk;
+allocate channel c2 type disk;
+
+backup database format '/mnt/operational_dba/rman/prd2/%d_db_%T_%U';
+backup archivelog all not backed up format ‘/mnt/operational_dba/rman/prd2/%d_arch_%T_%U';
+backup current controlfile for standby format '/mnt/operational_dba/rman/prd2/%d_ctrl_%T_%U';
+}
+
+
+<b>II. Data Guard Site</b>
+1.	Modify initial parameters
+[oracle@t01oracleprd903 dbs]$ more initprd2adg.orig
+*.audit_file_dest='/opt/oracle/app/admin/prd2adg/adump'
+*.audit_sys_operations=TRUE
+*.audit_trail='db'
+*.compatible='11.2.0.0.0'
+*.control_files='/opt/data/prd2adg/control01.ctl','/opt/data/prd2adg/control02.ctl'
+*.db_block_size=8192
+*.db_create_file_dest='/opt/data/prd2adg/datafile'
+*.db_domain=''
+*.db_file_name_convert='+DATA1/prd2/datafile',
+                       '/opt/data/prd2adg/datafile',
+                       '+INDEX1/prd2/datafile',
+                       '/opt/data/prd2adg/datafile',
+                       '+DA
+TA2/prd2/oradata','/opt/data/prd2adg/datafile','+DATA1/prd2/tempfile','/opt/data/prd2adg/datafile'
+*.db_name='prd2'
+*.db_recovery_file_dest='/opt/data/prd2adg/recovery'
+*.db_recovery_file_dest_size=4070572032
+*.db_unique_name='prd2adg'
+*.deferred_segment_creation=FALSE
+*.diagnostic_dest='/opt/oracle/app'
+*.dispatchers='(PROTOCOL=TCP) (SERVICE=prd2adgXDB)'
+*.fal_client='prd2adg'
+*.fal_server='prd2'
+*.log_archive_config='dg_config=(prd2adg,prd2)'
+*.log_archive_dest_1='location=/opt/data/prd2adg/archivelog db_unique_name=prd2adg'
+*.log_archive_dest_2='service=prd2 lgwr async valid_for=(online_logfiles,primary_role) db_unique_name=prd2'
+*.log_archive_format='%t_%s_%r.arc'
+*.log_file_name_convert='+REDODG/prd2/onlinelog','/opt/data/prd2adg/onlinelog'
+*.memory_target=3221225472
+*.open_cursors=4000
+*.optimizer_index_caching=50
+*.optimizer_index_cost_adj=20
+*.processes=5000
+*.recyclebin='off'
+*.remote_login_passwordfile='exclusive'
+*.session_cached_cursors=800
+*.standby_file_management='AUTO'
+*.undo_tablespace='UNDOTBS1'
+[oracle@t01oracleprd903 dbs]$
+
+Notes that:
+a.	Remove cluster related parameters because this data guard is single node
+b.	Modify necessary parameters (highlighted) based on data guard environment
+c.	Reset optionally 11g parameter memory_target  based on available shared space in /dev/shm. The instance
+    won’t be started if the parameter is set to bigger than available shared space in /dev/shm
+d.	Create local directories set by parameters
+e.	Set parameter db_file_name_convert and log_file_name_convert bases on primary datafile, tempfiles, and
+    redo log files full paths and their data guard full paths
+f.	Remove, if there are, deprecated parameters such as log_archive_start, standby_archive_dest, etc (and
+    recommend to remove them from primary site as well)
+
+2.	Start data guard as NOMOUNT
+SQL> startup nomount pfile='/opt/oracle/app/db/11.2.0.1/dbs/initprd2adg.orig'
+Notes that: fix any parameter related issues and make sure there is no error or warning
+
+3.	Generate spfile and restart the database with spfile
+SQL> create spfile from pfile='/opt/oracle/app/db/11.2.0.1/dbs/initprd2adg.orig';
+File created.
+
+SQL> shutdown immediate;
+
+SQL> startup nomount;
+ORACLE instance started.
+...
+
+SQL> show parameter spfile;
+
+NAME                                 TYPE        VALUE
+------------------------------------ ----------- ------------------------------
+spfile                               string      /opt/oracle/app/db/11.2.0.1/db
+                                                 s/spfileprd2adg.ora
+SQL>
+
+4.	Create data guard database in RMAN
+
+Notes that: make sure the backup files can be accessed by data guard database with exactly same path. If the
+      file path cannot be set same, use RMAN CATALOG command to register the backup files with new path.
+
+[oracle@t01oracleprd903 ~]$ echo $ORACLE_SID
+prd2adg
+[oracle@t01oracleprd903 ~]$
+[oracle@t01oracleprd903 ~]$ rman target sys/test1234@prd2 auxiliary /
+
+Recovery Manager: Release 11.2.0.1.0 - Production on Sat Jul 30 05:54:36 2011
+
+Copyright (c) 1982, 2009, Oracle and/or its affiliates.  All rights reserved.
+
+connected to target database: PRD2 (DBID=1672282654)
+connected to auxiliary database: PRD2 (not mounted)
+
+RMAN>
+
+RMAN> run {
+allocate auxiliary channel aux1 device type disk;
+allocate auxiliary channel aux2 device type disk;
+
+duplicate target database for standby;
+}
+
+allocated channel: aux1
+channel aux1: SID=1885 device type=DISK
+
+allocated channel: aux2
+channel aux2: SID=3767 device type=DISK
+
+Starting Duplicate Db at 30-JUL-11
+
+contents of Memory Script:
+{
+   restore clone standby controlfile;
+}
+executing Memory Script
+
+Starting restore at 30-JUL-11
+
+channel aux1: starting datafile backup set restore
+channel aux1: restoring control file
+channel aux1: reading from backup piece /mnt/operational_dba/rman/prd2/30_ctrl_v8min8rr_1_1
+channel aux1: piece handle=/mnt/operational_dba/rman/prd2/30_ctrl_v8min8rr_1_1 tag=TAG20110730T053659
+channel aux1: restored backup piece 1
+channel aux1: restore complete, elapsed time: 00:00:01
+output file name=/opt/data/prd2adg/control01.ctl
+output file name=/opt/data/prd2adg/control02.ctl
+Finished restore at 30-JUL-11
+
+contents of Memory Script:
+{
+   sql clone 'alter database mount standby database';
+}
+executing Memory Script
+
+sql statement: alter database mount standby database
+
+contents of Memory Script:
+{
+   set newname for tempfile  1 to
+ "/opt/data/prd2adg/datafile/temp.263.741768227";
+   switch clone tempfile all;
+   set newname for datafile  1 to
+ "/opt/data/prd2adg/datafile/system.256.741768115";
+   set newname for datafile  2 to
+ "/opt/data/prd2adg/datafile/sysaux.257.741768115";
+   set newname for datafile  3 to
+ "/opt/data/prd2adg/datafile/undotbs1.258.741768115";
+   set newname for datafile  4 to
+ "/opt/data/prd2adg/datafile/users.259.741768117";
+   set newname for datafile  5 to
+ "/opt/data/prd2adg/datafile/undotbs2.264.741768237";
+   set newname for datafile  6 to
+ "/opt/data/prd2adg/datafile/teamworks_data.269.741923041";
+   set newname for datafile  7 to
+ "/opt/data/prd2adg/datafile/indxdynm.270.741923047";
+   set newname for datafile  8 to
+ "/opt/data/prd2adg/datafile/teamworks_lob1.271.741923209";
+   set newname for datafile  9 to
+ "/opt/data/prd2adg/datafile/datadynm.272.741923225";
+   set newname for datafile  10 to
+ "/opt/data/prd2adg/datafile/teamworks_lob.273.741923235";
+   set newname for datafile  11 to
+ "/opt/data/prd2adg/datafile/audit_data.274.741983181";
+   set newname for datafile  12 to
+ "/opt/data/prd2adg/datafile/datadynm.275.741983929";
+   set newname for datafile  13 to
+ "/opt/data/prd2adg/datafile/audit_index.276.741984295";
+   set newname for datafile  14 to
+ "/opt/data/prd2adg/datafile/teamworks_index.277.741985125";
+   set newname for datafile  15 to
+ "/opt/data/prd2adg/datafile/audit_data_lt_q4_2010.278.741986113";
+   set newname for datafile  16 to
+ "/opt/data/prd2adg/datafile/audit_data_maxval.279.741986135";
+   set newname for datafile  17 to
+ "/opt/data/prd2adg/datafile/audit_data_q1_2011.280.741986159";
+   set newname for datafile  18 to
+ "/opt/data/prd2adg/datafile/audit_data_q4_2010.281.741986179";
+   set newname for datafile  19 to
+ "/opt/data/prd2adg/datafile/audit_index_lt_q4_2010.282.741986203";
+   set newname for datafile  20 to
+ "/opt/data/prd2adg/datafile/audit_index_maxval.283.741986231";
+   set newname for datafile  21 to
+ "/opt/data/prd2adg/datafile/audit_index_q1_2011.284.741986251";
+   set newname for datafile  22 to
+ "/opt/data/prd2adg/datafile/audit_index_q4_2010.285.741986265";
+   set newname for datafile  23 to
+ "/opt/data/prd2adg/datafile/ggate.286.743797729";
+   set newname for datafile  24 to
+ "/opt/data/prd2adg/datafile/datadynm.287.745428401";
+   set newname for datafile  25 to
+ "/opt/data/prd2adg/datafile/deallogo_datadynm.289.747328651";
+   set newname for datafile  26 to
+ "/opt/data/prd2adg/datafile/deallogo_indxdynm.288.747328601";
+   set newname for datafile  27 to
+ "/opt/data/prd2adg/datafile/deallogo_lobdynm.290.747328775";
+   set newname for datafile  28 to
+ "/opt/data/prd2adg/datafile/priceblast_datadynm_01.dbf";
+   set newname for datafile  29 to
+ "/opt/data/prd2adg/datafile/indxdynm.266.747947415";
+   set newname for datafile  30 to
+ "/opt/data/prd2adg/datafile/indxdynm01.dbf";
+   set newname for datafile  31 to
+ "/opt/data/prd2adg/datafile/lsw_task_data01.dbf";
+   set newname for datafile  32 to
+ "/opt/data/prd2adg/datafile/lsw_task_index01.dbf";
+   set newname for datafile  33 to
+ "/opt/data/prd2adg/datafile/lsw_task_blob01.dbf";
+   set newname for datafile  34 to
+ "/opt/data/prd2adg/datafile/tw_data01.dbf";
+   restore
+   clone database
+   ;
+}
+executing Memory Script
+executing command: SET NEWNAME
+renamed tempfile 1 to /opt/data/prd2adg/datafile/temp.263.741768227 in control file
+executing command: SET NEWNAME
+executing command: SET NEWNAME
+executing command: SET NEWNAME
+
+Starting restore at 30-JUL-11
+channel aux1: starting datafile backup set restore
+channel aux1: specifying datafile(s) to restore from backup set
+channel aux1: restoring datafile 00001 to /opt/data/prd2adg/datafile/system.256.741768115
+channel aux1: restoring datafile 00002 to /opt/data/prd2adg/datafile/sysaux.257.741768115
+channel aux1: restoring datafile 00003 to /opt/data/prd2adg/datafile/undotbs1.258.741768115
+channel aux1: restoring datafile 00004 to /opt/data/prd2adg/datafile/users.259.741768117
+channel aux1: restoring datafile 00005 to /opt/data/prd2adg/datafile/undotbs2.264.741768237
+channel aux1: restoring datafile 00006 to /opt/data/prd2adg/datafile/teamworks_data.269.741923041
+channel aux1: restoring datafile 00007 to /opt/data/prd2adg/datafile/indxdynm.270.741923047
+channel aux1: restoring datafile 00008 to /opt/data/prd2adg/datafile/teamworks_lob1.271.741923209
+channel aux1: restoring datafile 00009 to /opt/data/prd2adg/datafile/datadynm.272.741923225
+channel aux1: restoring datafile 00010 to /opt/data/prd2adg/datafile/teamworks_lob.273.741923235
+channel aux1: restoring datafile 00011 to /opt/data/prd2adg/datafile/audit_data.274.741983181
+channel aux1: restoring datafile 00012 to /opt/data/prd2adg/datafile/datadynm.275.741983929
+channel aux1: restoring datafile 00013 to /opt/data/prd2adg/datafile/audit_index.276.741984295
+channel aux1: restoring datafile 00014 to /opt/data/prd2adg/datafile/teamworks_index.277.741985125
+channel aux1: restoring datafile 00015 to /opt/data/prd2adg/datafile/audit_data_lt_q4_2010.278.741986113
+channel aux1: restoring datafile 00016 to /opt/data/prd2adg/datafile/audit_data_maxval.279.741986135
+channel aux1: restoring datafile 00017 to /opt/data/prd2adg/datafile/audit_data_q1_2011.280.741986159
+channel aux1: restoring datafile 00018 to /opt/data/prd2adg/datafile/audit_data_q4_2010.281.741986179
+channel aux1: restoring datafile 00019 to /opt/data/prd2adg/datafile/audit_index_lt_q4_2010.282.741986203
+channel aux1: restoring datafile 00020 to /opt/data/prd2adg/datafile/audit_index_maxval.283.741986231
+channel aux1: restoring datafile 00021 to /opt/data/prd2adg/datafile/audit_index_q1_2011.284.741986251
+channel aux1: restoring datafile 00022 to /opt/data/prd2adg/datafile/audit_index_q4_2010.285.741986265
+channel aux1: restoring datafile 00023 to /opt/data/prd2adg/datafile/ggate.286.743797729
+channel aux1: restoring datafile 00024 to /opt/data/prd2adg/datafile/datadynm.287.745428401
+channel aux1: restoring datafile 00025 to /opt/data/prd2adg/datafile/deallogo_datadynm.289.747328651
+channel aux1: restoring datafile 00026 to /opt/data/prd2adg/datafile/deallogo_indxdynm.288.747328601
+channel aux1: restoring datafile 00027 to /opt/data/prd2adg/datafile/deallogo_lobdynm.290.747328775
+channel aux1: restoring datafile 00028 to /opt/data/prd2adg/datafile/priceblast_datadynm_01.dbf
+channel aux1: restoring datafile 00029 to /opt/data/prd2adg/datafile/indxdynm.266.747947415
+channel aux1: restoring datafile 00030 to /opt/data/prd2adg/datafile/indxdynm01.dbf
+channel aux1: restoring datafile 00031 to /opt/data/prd2adg/datafile/lsw_task_data01.dbf
+channel aux1: restoring datafile 00032 to /opt/data/prd2adg/datafile/lsw_task_index01.dbf
+channel aux1: restoring datafile 00033 to /opt/data/prd2adg/datafile/lsw_task_blob01.dbf
+channel aux1: restoring datafile 00034 to /opt/data/prd2adg/datafile/tw_data01.dbf
+channel aux1: reading from backup piece /mnt/operational_dba/rman/prd2/PRD2_20110730_v3min6ao_1_1
+channel aux1: restored backup piece 1
+channel aux1: restore complete, elapsed time: 01:33:33
+Finished restore at 30-JUL-11
+
+contents of Memory Script:
+{
+   switch clone datafile all;
+}
+executing Memory Script
+
+datafile 1 switched to datafile copy
+input datafile copy RECID=8 STAMP=757842487 file name=/opt/data/prd2adg/datafile/system.256.741768115
+datafile 2 switched to datafile copy
+input datafile copy RECID=9 STAMP=757842487 file name=/opt/data/prd2adg/datafile/sysaux.257.741768115
+datafile 3 switched to datafile copy
+input datafile copy RECID=10 STAMP=757842487 file name=/opt/data/prd2adg/datafile/undotbs1.258.741768115
+datafile 4 switched to datafile copy
+input datafile copy RECID=11 STAMP=757842487 file name=/opt/data/prd2adg/datafile/users.259.741768117
+datafile 5 switched to datafile copy
+input datafile copy RECID=12 STAMP=757842487 file name=/opt/data/prd2adg/datafile/undotbs2.264.741768237
+datafile 6 switched to datafile copy
+input datafile copy RECID=13 STAMP=757842487 file name=/opt/data/prd2adg/datafile/teamworks_data.269.741923041
+datafile 7 switched to datafile copy
+input datafile copy RECID=14 STAMP=757842487 file name=/opt/data/prd2adg/datafile/indxdynm.270.741923047
+datafile 8 switched to datafile copy
+input datafile copy RECID=15 STAMP=757842487 file name=/opt/data/prd2adg/datafile/teamworks_lob1.271.741923209
+datafile 9 switched to datafile copy
+input datafile copy RECID=16 STAMP=757842487 file name=/opt/data/prd2adg/datafile/datadynm.272.741923225
+datafile 10 switched to datafile copy
+input datafile copy RECID=17 STAMP=757842487 file name=/opt/data/prd2adg/datafile/teamworks_lob.273.741923235
+datafile 11 switched to datafile copy
+input datafile copy RECID=18 STAMP=757842487 file name=/opt/data/prd2adg/datafile/audit_data.274.741983181
+datafile 12 switched to datafile copy
+input datafile copy RECID=19 STAMP=757842487 file name=/opt/data/prd2adg/datafile/datadynm.275.741983929
+datafile 13 switched to datafile copy
+input datafile copy RECID=20 STAMP=757842487 file name=/opt/data/prd2adg/datafile/audit_index.276.741984295
+datafile 14 switched to datafile copy
+input datafile copy RECID=21 STAMP=757842487 file name=/opt/data/prd2adg/datafile/teamworks_index.277.741985125
+datafile 15 switched to datafile copy
+input datafile copy RECID=22 STAMP=757842487 file name=/opt/data/prd2adg/datafile/audit_data_lt_q4_2010.278.741986113
+datafile 16 switched to datafile copy
+input datafile copy RECID=23 STAMP=757842487 file name=/opt/data/prd2adg/datafile/audit_data_maxval.279.741986135
+datafile 17 switched to datafile copy
+input datafile copy RECID=24 STAMP=757842488 file name=/opt/data/prd2adg/datafile/audit_data_q1_2011.280.741986159
+datafile 18 switched to datafile copy
+input datafile copy RECID=25 STAMP=757842488 file name=/opt/data/prd2adg/datafile/audit_data_q4_2010.281.741986179
+datafile 19 switched to datafile copy
+input datafile copy RECID=26 STAMP=757842488 file name=/opt/data/prd2adg/datafile/audit_index_lt_q4_2010.282.741986203
+datafile 20 switched to datafile copy
+input datafile copy RECID=27 STAMP=757842488 file name=/opt/data/prd2adg/datafile/audit_index_maxval.283.741986231
+datafile 21 switched to datafile copy
+input datafile copy RECID=28 STAMP=757842488 file name=/opt/data/prd2adg/datafile/audit_index_q1_2011.284.741986251
+datafile 22 switched to datafile copy
+input datafile copy RECID=29 STAMP=757842488 file name=/opt/data/prd2adg/datafile/audit_index_q4_2010.285.741986265
+datafile 23 switched to datafile copy
+input datafile copy RECID=30 STAMP=757842488 file name=/opt/data/prd2adg/datafile/ggate.286.743797729
+datafile 24 switched to datafile copy
+input datafile copy RECID=31 STAMP=757842488 file name=/opt/data/prd2adg/datafile/datadynm.287.745428401
+datafile 25 switched to datafile copy
+input datafile copy RECID=32 STAMP=757842488 file name=/opt/data/prd2adg/datafile/deallogo_datadynm.289.747328651
+datafile 26 switched to datafile copy
+input datafile copy RECID=33 STAMP=757842488 file name=/opt/data/prd2adg/datafile/deallogo_indxdynm.288.747328601
+datafile 27 switched to datafile copy
+input datafile copy RECID=34 STAMP=757842488 file name=/opt/data/prd2adg/datafile/deallogo_lobdynm.290.747328775
+datafile 28 switched to datafile copy
+input datafile copy RECID=35 STAMP=757842489 file name=/opt/data/prd2adg/datafile/priceblast_datadynm_01.dbf
+datafile 29 switched to datafile copy
+input datafile copy RECID=36 STAMP=757842489 file name=/opt/data/prd2adg/datafile/indxdynm.266.747947415
+datafile 30 switched to datafile copy
+input datafile copy RECID=37 STAMP=757842489 file name=/opt/data/prd2adg/datafile/indxdynm01.dbf
+datafile 31 switched to datafile copy
+input datafile copy RECID=38 STAMP=757842489 file name=/opt/data/prd2adg/datafile/lsw_task_data01.dbf
+datafile 32 switched to datafile copy
+input datafile copy RECID=39 STAMP=757842489 file name=/opt/data/prd2adg/datafile/lsw_task_index01.dbf
+datafile 33 switched to datafile copy
+input datafile copy RECID=40 STAMP=757842489 file name=/opt/data/prd2adg/datafile/lsw_task_blob01.dbf
+datafile 34 switched to datafile copy
+input datafile copy RECID=41 STAMP=757842489 file name=/opt/data/prd2adg/datafile/tw_data01.dbf
+Finished Duplicate Db at 30-JUL-11
+released channel: aux1
+released channel: aux2
+
+RMAN>
+
+5.	Create standby redo log
+SQL> alter database add standby logfile group 30 '/opt/data/prd2adg/onlinelog/stby_redo30.log' size 1024M;
+SQL> alter database add standby logfile group 31 '/opt/data/prd2adg/onlinelog/stby_redo31.log' size 1024M;
+SQL> alter database add standby logfile group 32 '/opt/data/prd2adg/onlinelog/stby_redo32.log' size 1024M;
+SQL> alter database add standby logfile group 33 '/opt/data/prd2adg/onlinelog/stby_redo33.log' size 1024M;
+SQL> alter database add standby logfile group 34 '/opt/data/prd2adg/onlinelog/stby_redo34.log' size 1024M;
+SQL> alter database add standby logfile group 35 '/opt/data/prd2adg/onlinelog/stby_redo35.log' size 1024M;
+SQL> alter database add standby logfile group 36 '/opt/data/prd2adg/onlinelog/stby_redo36.log' size 1024M;
+SQL> alter database add standby logfile group 37 '/opt/data/prd2adg/onlinelog/stby_redo37.log' size 1024M;
+SQL> alter database add standby logfile group 38 '/opt/data/prd2adg/onlinelog/stby_redo38.log' size 1024M;
+SQL> alter database add standby logfile group 39 '/opt/data/prd2adg/onlinelog/stby_redo39.log' size 1024M;
+
+Notes that:
+a.	The number of standby log group = (number of Primary redo log groups in one thread/instance + 1) x number
+    of threads/instances. For this instance, it is (4+1)x2=10
+b.	Make sure the data guard recovery is not running. Otherwise, the creating standby redo log will fail.
+
+SQL> select group#, thread#, status from v$log;
+
+    GROUP#    THREAD# STATUS
+---------- ---------- ----------------
+        11          1 UNUSED
+        12          1 UNUSED
+        13          1 UNUSED
+        14          1 CURRENT
+        21          2 UNUSED
+        22          2 UNUSED
+        23          2 CURRENT
+        24          2 UNUSED
+
+8 rows selected.
+
+SQL> select group#, thread#, status from v$standby_log;
+no rows selected
+
+SQL> select process, status from v$managed_standby;
+
+PROCESS   STATUS
+--------- ------------
+ARCH      CONNECTED
+ARCH      CONNECTED
+ARCH      CONNECTED
+ARCH      CONNECTED
+
+SQL>
+
+6.	Modify /etc/oratab to add data guard database entry
+[oracle@t01oracleprd903 app]$ more /etc/oratab
+...
+
+prd2adg:/opt/oracle/app/db/11.2.0.1:N
+[oracle@t01oracleprd903 app]$
+
+7.	asdfsad
+
+
+III. Primary Site
+1.	Enable log transportation to data guard site
+SQL> alter system set log_archive_dest_state_2='enable' scope=both sid='*';
+
+2.	Verify destination status is VALID and new generated archived log transmitted on ALL nodes
+SQL> select dest_name, status from v$archive_dest;
+
+DEST_NAME                             STATUS
+------------------------------------- --------
+LOG_ARCHIVE_DEST_1                     VALID
+LOG_ARCHIVE_DEST_2                     VALID
+...
+
+SQL> alter system switch logfile;
+
+3.	Add standby configurations, optional but recommended, in primary for possible failover
+SQL> alter system set db_file_name_convert='<standby_path>','<primary_path>' scope=both sid='*';
+SQL> alter system set db_file_name_convert='<standby_path>','<primary_path>' scope=both sid='*';
+SQL> alter database add standby logfile group # '<+DG>' size 1024M;
+
+Notes that: use correct path and diskgroup based on the environment
+
+4.	asdfs
+
+
+IV. Data Guard Site
+1.	Open data guard as READONLY
+SQL> alter database open;
+
+Database altered.
+
+SQL> select OPEN_MODE from v$database;
+
+OPEN_MODE
+--------------------
+READ ONLY
+
+SQL>
+
+2.	Enable managed standby recovery
+SQL> alter database recover managed standby database using current logfile disconnect;
+
+Database altered.
+
+SQL> select OPEN_MODE from v$database;
+
+OPEN_MODE
+--------------------
+READ ONLY WITH APPLY
+
+SQL>
+
+3.	Verify the log apply lag
+SQL> select name, value, datum_time, time_computed FROM V$DATAGUARD_STATS WHERE name like 'apply lag';
+
+NAME
+--------------------------------
+VALUE
+----------------------------------------------------------------
+DATUM_TIME                     TIME_COMPUTED
+------------------------------ ------------------------------
+apply lag
++00 00:00:00
+07/30/2011 14:19:02            07/30/2011 14:19:03
+
+
+SQL>
+
+SQL> select thread#, max(sequence#) from v$archived_log where applied='YES' group by thread#;
+
+   THREAD# MAX(SEQUENCE#)
+---------- --------------
+         1           7062
+         2           5949
+
+SQL>
+
+4.	Safddsa
+
+Appendix:
+For data guard is a RAC database, manually register the data guard database to the clusterware and enable
+the managed standby recovery on only one node:
+
+[~]$ srvctl add database -d <db_name> -o <DG_ORACLE_HOME>
+[~]$ srvctl add instance -d <db_name> -i <dg_instance1> -n <node1>
+[~]$ srvctl add instance -d <db_name> -i <dg_instance2> -n <node2>
+[~]$ srvctl start instance -d <db_name>
+
+
+
+Reference:
+Creating Physical Standby using RMAN Duplicate [ID 789370.1]
+Creating Physical Standby Using RMAN DUPLICATE...FROM ACTIVE DATABASE using Primary Active Database Files [ID 1075908.1]
+
+
+
+</i></pre>
+</td></tr>
+
+</table>
+
+</body>
+</html>
